@@ -3,6 +3,12 @@
 # Date:        2011/01/19
 # Description: This file contains the base class for parsers that use RLTK.
 
+#########
+# Notes #
+#########
+
+# FIXME: Handle the :optional callback
+
 ############
 # Requires #
 ############
@@ -147,20 +153,55 @@ module RLTK
 				@default_arg_type = :splat
 
 				@grammar.callback do |type, which, p, sels = []|
+
+					puts "Callback: #{type} / #{which}"
+
 					@procs[p.id] = [
 						case type
-						when :optional
-							case which
-							when :empty then ProdProc.new { ||  nil }
-							else             ProdProc.new { |o|   o }
-							end
-
 						when :list
 							case which
-							when :empty
-							when
-						end,
+							when :empty_wrapper
+								ProdProc.new { || [] }
 
+							when :nonempty_wrapper
+								ProdProc.new { |xs| xs }
+
+							when :empty
+								ProdProc.new { || [] }
+
+							when :single
+								ProdProc.new { |x| [x] }
+
+							when :multiple
+								ProdProc.new(:splat, sels) do |*syms|
+									puts "Multiple items: #{syms}"
+
+									el = syms[1..-1]
+									syms.first << (el.length == 1 ? el.first : el)
+								end
+
+							when :elements
+#								ProdProc.new { |*el| el.length == 1 ? el.first : el }
+
+								ProdProc.new do |*el|
+									puts "Got elements: #{el}"
+
+									el.length == 1 ? el.first : el
+								end
+
+							else
+								raise "Unknown callback type: #{type} / #{which}"
+							end
+
+						when :option
+						end,
+						p.rhs.length
+					]
+
+					##########
+
+#					@procs[p.id] = [
+#						case type
 #						when :elp
 #							case which
 #							when :empty then ProdProc.new { ||         [] }
@@ -182,8 +223,8 @@ module RLTK
 #								ProdProc.new { |*el| el.length == 1 ? el.first : el }
 #							end
 #						end,
-						p.rhs.length
-					]
+#						p.rhs.length
+#					]
 
 					@production_precs[p.id] = p.last_terminal
 				end
@@ -382,7 +423,7 @@ module RLTK
 			#
 			# @see CFG#empty_list_production
 			def build_list_production(symbol, list_elements, separator = '')
-				@grammar.build_list_production(symbol, list_elements, separator)
+				@grammar.build_list_production(symbol, list_elements, separator, true)
 			end
 			alias :list :build_list_production
 
@@ -755,7 +796,7 @@ module RLTK
 			#
 			# @see CFG#nonempty_list_production
 			def build_nonempty_list_production(symbol, list_elements, separator = '')
-				@grammar.build_nonempty_list_production(symbol, list_elements, separator)
+				@grammar.build_list_production(symbol, list_elements, separator, false)
 			end
 			alias :nonempty_list :build_nonempty_list_production
 
@@ -783,7 +824,7 @@ module RLTK
 			          verbose:    false)
 
 			    # Reasonable use of one letter variable name?
-				v = verbose
+				v = RLTK::get_io(verbose)
 
 				if verbose
 					v.puts("Input tokens:")
